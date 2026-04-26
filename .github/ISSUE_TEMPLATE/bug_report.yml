@@ -1,0 +1,51 @@
+name: Bug report
+description: Reportar falha reproduzível no retrieval backend
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Resumo
+      description: Descreva o problema de forma objetiva.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Ambiente
+      description: Informe Python, Poetry, datastore e método de execução, sem credenciais.
+      placeholder: |
+        Python:
+        Poetry:
+        Datastore:
+        Execução: local / Docker / cloud
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Como reproduzir
+      description: Liste os passos exatos.
+      placeholder: |
+        1. Configurar DATASTORE=...
+        2. Rodar poetry run start
+        3. Chamar endpoint...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Resultado esperado
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidências
+      description: Logs sanitizados, prints ou contexto técnico. Não inclua tokens, API keys, documentos privados ou dados sensíveis.
+      render: shell
