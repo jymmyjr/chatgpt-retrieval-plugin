@@ -8,6 +8,14 @@ Governance and CI baseline added for the Python/FastAPI retrieval backend.
 
 Application repository: Python/FastAPI/Poetry retrieval backend.
 
+## Central governance reference
+
+Portfolio-level governance is tracked in:
+
+```text
+jymmyjr/effective-meme/PORTFOLIO_GOVERNANCE.md
+```
+
 ## Completed
 
 - Classified repository as a Python/FastAPI/Poetry application.
