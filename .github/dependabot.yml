@@ -3,16 +3,54 @@ version: 2
 updates:
   - package-ecosystem: pip
     directory: /
+    target-branch: main
     schedule:
       interval: weekly
       day: monday
-      time: "06:00"
+      time: '06:00'
+      timezone: America/Cuiaba
     open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - python
+      - poetry
+      - security
+    assignees:
+      - jymmyjr
+    reviewers:
+      - jymmyjr
+    groups:
+      python-minor-patch:
+        update-types:
+          - minor
+          - patch
+      python-major:
+        update-types:
+          - major
 
   - package-ecosystem: github-actions
     directory: /
+    target-branch: main
     schedule:
       interval: weekly
       day: monday
-      time: "06:30"
+      time: '06:30'
+      timezone: America/Cuiaba
     open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - github-actions
+      - ci
+      - security
+    assignees:
+      - jymmyjr
+    reviewers:
+      - jymmyjr
+    groups:
+      github-actions-minor-patch:
+        update-types:
+          - minor
+          - patch
+      github-actions-major:
+        update-types:
+          - major
