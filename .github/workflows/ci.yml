@@ -42,6 +42,9 @@ jobs:
           python -m poetry config virtualenvs.in-project true
           python -m poetry run python --version
 
+      - name: Validate Python syntax
+        run: python -m compileall datastore scripts server services tests
+
       - name: Refresh Poetry lock metadata
         run: python -m poetry lock --no-update
 
