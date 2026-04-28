@@ -1,0 +1,25 @@
+# Default owner
+* @jymmyjr
+
+# Governance and automation
+.github/ @jymmyjr
+.github/workflows/ @jymmyjr
+.github/dependabot.yml @jymmyjr
+.github/pull_request_template.md @jymmyjr
+.github/ISSUE_TEMPLATE/ @jymmyjr
+
+# Python / Poetry application control points
+pyproject.toml @jymmyjr
+poetry.lock @jymmyjr
+OPERATIONAL_BASELINE.md @jymmyjr
+DEPENDENCY_SECURITY_UPDATE_PLAN.md @jymmyjr
+SECURITY.md @jymmyjr
+.env.example @jymmyjr
+
+# Retrieval backend sensitive areas
+server/ @jymmyjr
+local_server/ @jymmyjr
+datastore/ @jymmyjr
+models/ @jymmyjr
+services/ @jymmyjr
+scripts/ @jymmyjr
