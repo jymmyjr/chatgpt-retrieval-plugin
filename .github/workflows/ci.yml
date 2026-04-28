@@ -29,16 +29,18 @@ jobs:
         run: pipx install poetry==1.7.1
 
       - name: Configure Poetry
-        run: poetry config virtualenvs.create false
+        run: |
+          poetry config virtualenvs.create true
+          poetry config virtualenvs.in-project true
 
       - name: Refresh Poetry lock metadata
         run: poetry lock --no-update
 
       - name: Install dependencies
-        run: poetry install --with dev
+        run: poetry install --with dev --no-interaction
 
       - name: Run tests
-        run: pytest
+        run: poetry run pytest
 
       - name: Validate package metadata
         run: poetry check
