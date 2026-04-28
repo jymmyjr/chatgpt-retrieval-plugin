@@ -1,0 +1,157 @@
+name: Prepare Consolidated Dependency Update
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prepare-consolidated-update:
+    name: Prepare consolidated Poetry dependency update PR
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
+
+      - name: Install Poetry
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install poetry
+
+      - name: Configure Poetry
+        run: |
+          poetry config virtualenvs.in-project true
+
+      - name: Install current dependencies
+        run: |
+          poetry install --with dev
+
+      - name: Validate current project metadata
+        run: |
+          poetry check
+
+      - name: Run current tests before update
+        run: |
+          poetry run pytest
+
+      - name: Apply consolidated dependency update
+        run: |
+          poetry update lxml python-dotenv gitpython
+
+      - name: Validate project metadata after update
+        run: |
+          poetry check
+
+      - name: Run tests after update
+        run: |
+          poetry run pytest
+
+      - name: Stop if no dependency diff exists
+        id: diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- pyproject.toml poetry.lock; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No dependency diff detected."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Dependency diff detected."
+          fi
+
+      - name: Generate dependency update diff artifact
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "Repository: $GITHUB_REPOSITORY"
+            echo "Commit: $GITHUB_SHA"
+            echo "Generated at: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            echo
+            echo "Git status:"
+            git status --short
+            echo
+            echo "Dependency diff:"
+            git diff -- pyproject.toml poetry.lock || true
+          } > dependency-update-diff.txt
+
+      - name: Upload dependency update diff
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dependency-update-diff
+          path: dependency-update-diff.txt
+          if-no-files-found: error
+          retention-days: 14
+          archive: false
+
+      - name: Configure Git author
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Create consolidated update branch
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          git checkout -B chore/consolidated-poetry-security-update
+          git add pyproject.toml poetry.lock
+          git commit -m "chore: consolidate Poetry security dependency updates"
+          git push --force-with-lease origin chore/consolidated-poetry-security-update
+
+      - name: Create or update pull request
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          body_file="/tmp/consolidated-dependency-update-body.md"
+          cat > "$body_file" <<'EOF'
+          ## Summary
+
+          Consolidated Poetry dependency update for the currently open Dependabot PRs:
+
+          - lxml
+          - python-dotenv
+          - gitpython
+
+          ## Validation performed by workflow
+
+          - poetry install --with dev
+          - poetry check before update
+          - pytest before update
+          - poetry update lxml python-dotenv gitpython
+          - poetry check after update
+          - pytest after update
+
+          ## Governance
+
+          This PR supersedes the individual Dependabot PRs if CI passes and the dependency diff is reviewed.
+
+          Do not merge without reviewing `dependency-update-diff.txt` from the workflow artifact and confirming no secrets or unsafe config changes were introduced.
+          EOF
+
+          if gh pr view chore/consolidated-poetry-security-update --json number --jq .number >/tmp/pr-number.txt 2>/dev/null; then
+            pr_number="$(cat /tmp/pr-number.txt)"
+            gh pr edit "$pr_number" \
+              --title "Consolidate Poetry security dependency updates" \
+              --body-file "$body_file"
+            echo "Updated existing PR #$pr_number"
+          else
+            gh pr create \
+              --base main \
+              --head chore/consolidated-poetry-security-update \
+              --title "Consolidate Poetry security dependency updates" \
+              --body-file "$body_file"
+          fi
