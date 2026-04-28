@@ -29,6 +29,7 @@ jymmyjr/effective-meme/PORTFOLIO_GOVERNANCE.md
 - Added bug report issue template for reproducible retrieval backend failures.
 - Added dependency security update plan for the open Dependabot PRs.
 - Added manual non-committing dependency update validation workflow.
+- Added manual consolidated dependency update PR-preparation workflow.
 
 ## Current dependency security queue
 
@@ -59,19 +60,26 @@ Manual validation workflow:
 .github/workflows/dependency-update-validation.yml
 ```
 
+Manual PR-preparation workflow:
+
+```text
+.github/workflows/prepare-consolidated-dependency-update.yml
+```
+
 Decision:
 
 ```text
-Do not merge the three dependency PRs individually while mergeability remains false. First run the manual dependency update validation workflow, then prepare a single consolidated Poetry update and validate with CI.
+Do not merge the three dependency PRs individually while mergeability remains false. First run the manual dependency update validation workflow. If it passes, run or prepare a single consolidated Poetry update PR and validate with CI before merge.
 ```
 
 ## Remaining validation
 
 - Run `Dependency Update Validation` from GitHub Actions.
 - Review `dependency-update-diff.txt` artifact.
+- If validation passes, run `Prepare Consolidated Dependency Update` or prepare the consolidated PR manually.
 - If CI fails due to missing environment variables, add safe test defaults or split syntax/package validation from integration tests.
 - Review whether this fork should stay active or track upstream.
-- Prepare consolidated Poetry dependency update for `lxml`, `python-dotenv` and `gitpython` if validation passes.
+- Close or supersede individual Dependabot PRs only after the consolidated PR is validated and merged.
 
 ## Security notes
 
