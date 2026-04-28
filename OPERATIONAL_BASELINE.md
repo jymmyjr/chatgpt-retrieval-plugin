@@ -28,6 +28,7 @@ jymmyjr/effective-meme/PORTFOLIO_GOVERNANCE.md
 - Added Poetry/dependency lockfile governance checks to the pull request template.
 - Added bug report issue template for reproducible retrieval backend failures.
 - Added dependency security update plan for the open Dependabot PRs.
+- Added manual non-committing dependency update validation workflow.
 
 ## Current dependency security queue
 
@@ -52,18 +53,25 @@ Plan:
 DEPENDENCY_SECURITY_UPDATE_PLAN.md
 ```
 
+Manual validation workflow:
+
+```text
+.github/workflows/dependency-update-validation.yml
+```
+
 Decision:
 
 ```text
-Do not merge the three dependency PRs individually while mergeability remains false. Prepare a single consolidated Poetry update and validate with CI.
+Do not merge the three dependency PRs individually while mergeability remains false. First run the manual dependency update validation workflow, then prepare a single consolidated Poetry update and validate with CI.
 ```
 
 ## Remaining validation
 
-- Run GitHub Actions or wait for the next push.
+- Run `Dependency Update Validation` from GitHub Actions.
+- Review `dependency-update-diff.txt` artifact.
 - If CI fails due to missing environment variables, add safe test defaults or split syntax/package validation from integration tests.
 - Review whether this fork should stay active or track upstream.
-- Prepare consolidated Poetry dependency update for `lxml`, `python-dotenv` and `gitpython`.
+- Prepare consolidated Poetry dependency update for `lxml`, `python-dotenv` and `gitpython` if validation passes.
 
 ## Security notes
 
