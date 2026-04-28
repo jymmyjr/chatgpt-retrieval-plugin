@@ -13,6 +13,7 @@
 - [ ] Documentation
 - [ ] Workflow / automation
 - [ ] Security
+- [ ] Dependency / Poetry lockfile
 
 ## Validação obrigatória
 
@@ -20,6 +21,14 @@
 - [ ] `pytest`
 - [ ] Alterações são mínimas, focadas e relacionadas ao objetivo do PR
 - [ ] Documentação relevante foi atualizada
+
+## Regras para Poetry / dependências
+
+- [ ] `pyproject.toml` foi revisado quando houve alteração de constraints
+- [ ] `poetry.lock` foi regenerado de forma única e coerente
+- [ ] Não há múltiplas atualizações conflitantes de lockfile sendo mescladas individualmente
+- [ ] PRs Dependabot com `mergeable=false` não foram mescladas individualmente
+- [ ] Atualizações de segurança conflitantes foram consolidadas conforme `DEPENDENCY_SECURITY_UPDATE_PLAN.md`
 
 ## Segurança e dados
 
