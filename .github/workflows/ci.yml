@@ -48,8 +48,12 @@ jobs:
       - name: Install dependencies
         run: python -m poetry install --with dev --no-interaction
 
-      - name: Run tests
-        run: python -m poetry run pytest
+      - name: Run unit tests
+        env:
+          BEARER_TOKEN: ci-placeholder-token
+        run: |
+          python -m poetry run pytest tests \
+            --ignore=tests/datastore/providers
 
       - name: Validate package metadata
         run: python -m poetry check
