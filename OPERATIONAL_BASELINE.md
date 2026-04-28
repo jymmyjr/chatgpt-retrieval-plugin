@@ -30,6 +30,7 @@ jymmyjr/effective-meme/PORTFOLIO_GOVERNANCE.md
 - Added dependency security update plan for the open Dependabot PRs.
 - Added manual non-committing dependency update validation workflow.
 - Added manual consolidated dependency update PR-preparation workflow.
+- Added `GOVERNANCE_STATUS.md` as the repository entry-point for current dependency governance state.
 
 ## Current dependency security queue
 
@@ -52,6 +53,12 @@ Plan:
 
 ```text
 DEPENDENCY_SECURITY_UPDATE_PLAN.md
+```
+
+Current status entry-point:
+
+```text
+GOVERNANCE_STATUS.md
 ```
 
 Manual validation workflow:
