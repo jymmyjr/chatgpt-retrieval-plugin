@@ -25,22 +25,31 @@ jobs:
           python-version: '3.10'
           cache: pip
 
-      - name: Install Poetry
-        run: pipx install poetry==1.7.1
+      - name: Upgrade Python packaging tools
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+
+      - name: Install Poetry on the selected Python
+        run: |
+          python -m pip install poetry==1.7.1
+          python -m poetry --version
+          python --version
 
       - name: Configure Poetry
         run: |
-          poetry config virtualenvs.create true
-          poetry config virtualenvs.in-project true
+          python -m poetry env use "${pythonLocation}/bin/python"
+          python -m poetry config virtualenvs.create true
+          python -m poetry config virtualenvs.in-project true
+          python -m poetry run python --version
 
       - name: Refresh Poetry lock metadata
-        run: poetry lock --no-update
+        run: python -m poetry lock --no-update
 
       - name: Install dependencies
-        run: poetry install --with dev --no-interaction
+        run: python -m poetry install --with dev --no-interaction
 
       - name: Run tests
-        run: poetry run pytest
+        run: python -m poetry run pytest
 
       - name: Validate package metadata
-        run: poetry check
+        run: python -m poetry check
