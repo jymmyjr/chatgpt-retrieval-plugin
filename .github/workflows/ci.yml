@@ -26,10 +26,13 @@ jobs:
           cache: pip
 
       - name: Install Poetry
-        run: pipx install poetry
+        run: pipx install poetry==1.7.1
 
       - name: Configure Poetry
         run: poetry config virtualenvs.create false
+
+      - name: Refresh Poetry lock metadata
+        run: poetry lock --no-update
 
       - name: Install dependencies
         run: poetry install --with dev
