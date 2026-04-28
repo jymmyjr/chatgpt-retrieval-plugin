@@ -21,8 +21,11 @@ jymmyjr/effective-meme/PORTFOLIO_GOVERNANCE.md
 - Classified repository as a Python/FastAPI/Poetry application.
 - Added Python CI workflow using Poetry, pytest and `poetry check`.
 - Added Dependabot for Python dependencies and GitHub Actions.
+- Hardened Dependabot governance with target branch, timezone, labels, reviewers, assignees and grouped update policy.
 - Added `SECURITY.md` focused on OpenAI keys, bearer tokens, datastores, endpoints, uploads and logs.
+- Added `CODEOWNERS` for backend, Poetry, automation and sensitive retrieval areas.
 - Hardened pull request template for backend/security review.
+- Added Poetry/dependency lockfile governance checks to the pull request template.
 - Added bug report issue template for reproducible retrieval backend failures.
 - Added dependency security update plan for the open Dependabot PRs.
 
