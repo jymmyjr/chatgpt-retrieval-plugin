@@ -74,6 +74,37 @@ Expected artifact:
 dependency-update-diff.txt
 ```
 
+## Manual PR preparation workflow
+
+A separate controlled workflow can prepare the consolidated PR after validation:
+
+```text
+.github/workflows/prepare-consolidated-dependency-update.yml
+```
+
+Execution path:
+
+```text
+GitHub -> chatgpt-retrieval-plugin -> Actions -> Prepare Consolidated Dependency Update -> Run workflow
+```
+
+This workflow:
+
+```text
+checks out main
+sets up Python 3.10
+installs Poetry
+installs current dependencies
+runs poetry check and pytest before update
+runs poetry update lxml python-dotenv gitpython
+runs poetry check and pytest after update
+uploads dependency-update-diff artifact
+creates/updates branch chore/consolidated-poetry-security-update only if a diff exists
+creates/updates a PR titled Consolidate Poetry security dependency updates
+```
+
+It does not merge the PR automatically.
+
 ## Controlled update path
 
 Run from repository root:
@@ -100,7 +131,7 @@ pytest -q tests --ignore integration tests that require live services
 - Confirm Python CI passes.
 - Confirm application import/startup remains valid where feasible.
 - Confirm security update PRs are closed or superseded after the consolidated merge.
-- Review `dependency-update-diff.txt` from the manual validation workflow when available.
+- Review `dependency-update-diff.txt` from the validation or PR-preparation workflow when available.
 
 ## Repository security guardrails
 
@@ -120,4 +151,4 @@ private endpoint URLs with embedded credentials
 
 ## Current recommendation
 
-Run the manual dependency validation workflow first. If it passes, prepare a consolidated update branch or PR covering the three dependency updates together, regenerate `poetry.lock` once, validate with CI, then close or supersede the individual Dependabot PRs.
+Run the manual dependency validation workflow first. If it passes, run the PR-preparation workflow or prepare a consolidated update branch manually. Then review the generated PR and close or supersede the individual Dependabot PRs only after CI and diff review pass.
