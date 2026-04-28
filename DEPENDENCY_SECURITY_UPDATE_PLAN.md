@@ -37,6 +37,43 @@ Do not merge the three Dependabot PRs individually while they are reported as `m
 
 Use a single consolidated Poetry update instead.
 
+## Manual validation workflow
+
+A non-committing validation workflow is available:
+
+```text
+.github/workflows/dependency-update-validation.yml
+```
+
+Execution path:
+
+```text
+GitHub -> chatgpt-retrieval-plugin -> Actions -> Dependency Update Validation -> Run workflow
+```
+
+This workflow:
+
+```text
+checks out main
+sets up Python 3.10
+installs Poetry
+installs current dependencies
+runs poetry check
+runs pytest before update
+runs poetry update lxml python-dotenv gitpython
+runs poetry check after update
+runs pytest after update
+uploads dependency-update-diff artifact
+```
+
+It does not commit, merge or push changes.
+
+Expected artifact:
+
+```text
+dependency-update-diff.txt
+```
+
 ## Controlled update path
 
 Run from repository root:
@@ -63,6 +100,7 @@ pytest -q tests --ignore integration tests that require live services
 - Confirm Python CI passes.
 - Confirm application import/startup remains valid where feasible.
 - Confirm security update PRs are closed or superseded after the consolidated merge.
+- Review `dependency-update-diff.txt` from the manual validation workflow when available.
 
 ## Repository security guardrails
 
@@ -82,4 +120,4 @@ private endpoint URLs with embedded credentials
 
 ## Current recommendation
 
-Prepare a consolidated update branch or PR covering the three dependency updates together, regenerate `poetry.lock` once, validate with CI, then close or supersede the individual Dependabot PRs.
+Run the manual dependency validation workflow first. If it passes, prepare a consolidated update branch or PR covering the three dependency updates together, regenerate `poetry.lock` once, validate with CI, then close or supersede the individual Dependabot PRs.
