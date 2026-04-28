@@ -53,15 +53,12 @@ jobs:
           BEARER_TOKEN: ci-placeholder-token
           DATASTORE: chroma
         run: |
-          set +e
-          python -m poetry run pytest tests \
-            --ignore=tests/datastore/providers
-          status=$?
-          if [ "$status" -eq 5 ]; then
-            echo "No non-provider tests were collected after excluding external datastore tests. Treating this as a successful CI validation."
+          mapfile -t test_files < <(find tests -type f -name 'test_*.py' ! -path 'tests/datastore/providers/*' | sort)
+          if [ "${#test_files[@]}" -eq 0 ]; then
+            echo "No standalone unit tests found after excluding external datastore provider tests. Skipping pytest successfully."
             exit 0
           fi
-          exit "$status"
+          python -m poetry run pytest "${test_files[@]}"
 
       - name: Validate package metadata
         run: python -m poetry check
