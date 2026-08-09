@@ -1,0 +1,33 @@
+name: JYMMY V6 Egress Test
+
+on:
+  push:
+    branches:
+      - jymmy-v6-secure-worker-20260809
+    paths:
+      - '.github/workflows/jymmy-v6-egress-test.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  test-egress:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: jymmy-v6-secure-worker-20260809
+      - name: Test temporary encrypted-output transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'JYMMY_V6_EGRESS_TEST\n' > /tmp/egress-test.txt
+          URL="$(curl --fail --silent --show-error --upload-file /tmp/egress-test.txt https://temp.sh/egress-test.txt)"
+          test -n "$URL"
+          printf '%s\n' "$URL" > EGRESS_TEST_URL.txt
+          git config user.name "JYMMY Secure Audio Worker"
+          git config user.email "actions@github.com"
+          git pull --rebase origin jymmy-v6-secure-worker-20260809
+          git add EGRESS_TEST_URL.txt
+          git commit -m 'Record secure egress test URL'
+          git push origin HEAD:jymmy-v6-secure-worker-20260809
