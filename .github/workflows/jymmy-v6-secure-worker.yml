@@ -1,0 +1,169 @@
+name: JYMMY V6 Secure Demucs Worker
+
+on:
+  push:
+    branches:
+      - jymmy-v6-secure-worker-20260809
+    paths:
+      - '.github/workflows/jymmy-v6-secure-worker.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  secure-separation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - name: Checkout isolated worker branch
+        uses: actions/checkout@v4
+        with:
+          ref: jymmy-v6-secure-worker-20260809
+          fetch-depth: 1
+
+      - name: Configure secure handshake
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "JYMMY Secure Audio Worker"
+          git config user.email "actions@github.com"
+          mkdir -p .secure HANDSHAKE SECURE_OUTPUT inputs separated
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out .secure/runner_private.pem >/dev/null 2>&1
+          openssl pkey -in .secure/runner_private.pem -pubout -out HANDSHAKE/runner_public.pem >/dev/null 2>&1
+          cat > .secure/output_public.pem <<'EOF'
+          -----BEGIN PUBLIC KEY-----
+          MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAija3C01qa7I79dcRCZfW
+          y7urZ5T1g2W3VoB5PlrlLnKE7LOUunvtUHZbRvWZ1bjmulvZvJo2BA7hiHq7I5Hj
+          Fn4DgcFRayeh7LSpLCVKVKKkoJpck94lel23lrXs7buNM9mOhXyMDH+fY/rSefEL
+          +2y1/0a7Cz1qCISNTg4apImHVjvCLX92KVmQ6o5g3udFZnv/B9OAgLPJYqO90WXo
+          W9IPMM2QMZfrTR4IiwB21kItKxNH2xL/LDzj6srFmi/uc0VyVYXkyNcNWGX6uunE
+          sQLtZk33LM67mI/NC/k4T4klcYjeP3BDYcaEtOsUw57LZchzwar8ANoqvA9acmTN
+          lIO4AP5qCxdcjzfrRcEbN52Qa02mhNEuDp+6/ZXFjGJvzKo7FXdB3HxlO5f6u6L2
+          t6KqB397eB17cC9gj4Co/4RoAEreqie0+7NCvsunb82623b1aAU/AJzXG/fI8Za8
+          4ilo1LZQY43Hh3ebY8pCjnfZ/RjCI2nXJI3lx5h56LgwIODImke63QFQO4++roQz
+          s32CfcFnaSRSC/DBTMoKbbD99W7Tsyj05QJcLuTDc98GFlsLnOYlAplkWzd4/wTl
+          JIKYEZMq5rvMDXnlRrNwtzhbTym3R/Bub97dVNb9YHeiY+JMhRYZrwZAknYjQHOC
+          7nJcpKZhzNKaLYALjbN07N0CAwEAAQ==
+          -----END PUBLIC KEY-----
+          EOF
+          sed -i 's/^          //' .secure/output_public.pem
+          git add HANDSHAKE/runner_public.pem
+          git commit -m "Secure worker handshake public key"
+          git push origin HEAD:jymmy-v6-secure-worker-20260809
+
+      - name: Wait for encrypted Drive manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          FOUND=0
+          for i in $(seq 1 180); do
+            git fetch -q origin jymmy-v6-secure-worker-20260809
+            if git cat-file -e origin/jymmy-v6-secure-worker-20260809:SECURE_INPUT/manifest.rsa 2>/dev/null; then
+              git show origin/jymmy-v6-secure-worker-20260809:SECURE_INPUT/manifest.rsa > .secure/manifest.rsa
+              FOUND=1
+              break
+            fi
+            sleep 5
+          done
+          test "$FOUND" -eq 1
+          openssl pkeyutl -decrypt \
+            -inkey .secure/runner_private.pem \
+            -pkeyopt rsa_padding_mode:oaep \
+            -pkeyopt rsa_oaep_md:sha256 \
+            -in .secure/manifest.rsa \
+            -out .secure/manifest.txt
+          test "$(wc -l < .secure/manifest.txt)" -eq 6
+
+      - name: Install neural separation stack
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade pip
+          pip install 'demucs==4.0.1' gdown torchcodec
+
+      - name: Separate, encrypt and persist six clean stems
+        env:
+          TORCH_HOME: ${{ github.workspace }}/.torch
+        shell: bash
+        run: |
+          set -euo pipefail
+          TRACK=0
+          while IFS='|' read -r IDX FID; do
+            TRACK=$((TRACK+1))
+            test -n "$IDX"
+            test -n "$FID"
+            INPUT="inputs/source_${IDX}.m4a"
+            STEMBASE="source_${IDX}"
+            PLAIN=".secure/stem_${IDX}.flac"
+            ENC="SECURE_OUTPUT/stem_${IDX}.flac.enc"
+            KEYBIN=".secure/key_${IDX}.bin"
+            KEYENC="SECURE_OUTPUT/stem_${IDX}.key.rsa"
+            IVFILE="SECURE_OUTPUT/stem_${IDX}.iv"
+
+            python - "$FID" "$INPUT" <<'PY'
+          import gdown, os, sys
+          fid, out = sys.argv[1], sys.argv[2]
+          result = gdown.download(id=fid, output=out, quiet=False)
+          if not result or not os.path.exists(out) or os.path.getsize(out) == 0:
+              raise SystemExit('Drive download failed')
+          PY
+
+            python -m demucs \
+              --two-stems=vocals \
+              -n htdemucs_ft \
+              --flac \
+              --clip-mode rescale \
+              -o separated \
+              "$INPUT"
+
+            FOUND="$(find separated/htdemucs_ft -type f -path "*/${STEMBASE}/vocals.flac" -print -quit)"
+            test -n "$FOUND"
+            cp "$FOUND" "$PLAIN"
+
+            openssl rand 32 > "$KEYBIN"
+            IVHEX="$(openssl rand -hex 16)"
+            KEYHEX="$(xxd -p -c 256 "$KEYBIN")"
+            openssl enc -aes-256-cbc -K "$KEYHEX" -iv "$IVHEX" -in "$PLAIN" -out "$ENC"
+            printf '%s\n' "$IVHEX" > "$IVFILE"
+            openssl pkeyutl -encrypt \
+              -pubin -inkey .secure/output_public.pem \
+              -pkeyopt rsa_padding_mode:oaep \
+              -pkeyopt rsa_oaep_md:sha256 \
+              -in "$KEYBIN" -out "$KEYENC"
+
+            printf 'index=%s\n' "$IDX" > .secure/audit_${IDX}.txt
+            ffprobe -v error -show_entries format=duration,size,bit_rate -show_entries stream=codec_name,sample_rate,channels,bits_per_raw_sample -of default=nw=1 "$PLAIN" >> .secure/audit_${IDX}.txt
+            sha256sum "$PLAIN" >> .secure/audit_${IDX}.txt
+            sha256sum "$ENC" >> .secure/audit_${IDX}.txt
+
+            AUDKEY=".secure/audit_key_${IDX}.bin"
+            AUDENC="SECURE_OUTPUT/audit_${IDX}.txt.enc"
+            AUDKEYENC="SECURE_OUTPUT/audit_${IDX}.key.rsa"
+            AUDIV="SECURE_OUTPUT/audit_${IDX}.iv"
+            openssl rand 32 > "$AUDKEY"
+            AUDIVHEX="$(openssl rand -hex 16)"
+            AUDKEYHEX="$(xxd -p -c 256 "$AUDKEY")"
+            openssl enc -aes-256-cbc -K "$AUDKEYHEX" -iv "$AUDIVHEX" -in .secure/audit_${IDX}.txt -out "$AUDENC"
+            printf '%s\n' "$AUDIVHEX" > "$AUDIV"
+            openssl pkeyutl -encrypt -pubin -inkey .secure/output_public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in "$AUDKEY" -out "$AUDKEYENC"
+
+            git fetch -q origin jymmy-v6-secure-worker-20260809
+            git rebase origin/jymmy-v6-secure-worker-20260809
+            git add "SECURE_OUTPUT/stem_${IDX}.flac.enc" "SECURE_OUTPUT/stem_${IDX}.key.rsa" "SECURE_OUTPUT/stem_${IDX}.iv" "SECURE_OUTPUT/audit_${IDX}.txt.enc" "SECURE_OUTPUT/audit_${IDX}.key.rsa" "SECURE_OUTPUT/audit_${IDX}.iv"
+            git commit -m "Persist encrypted V6 stem ${IDX}"
+            git push origin HEAD:jymmy-v6-secure-worker-20260809
+
+            rm -f "$INPUT" "$PLAIN" "$KEYBIN" "$AUDKEY" .secure/audit_${IDX}.txt
+            rm -rf "separated/htdemucs_ft/${STEMBASE}"
+          done < .secure/manifest.txt
+          test "$TRACK" -eq 6
+
+      - name: Mark encrypted separation complete
+        run: |
+          printf 'COMPLETE\n' > SECURE_OUTPUT/STATUS.txt
+          git fetch -q origin jymmy-v6-secure-worker-20260809
+          git rebase origin/jymmy-v6-secure-worker-20260809
+          git add SECURE_OUTPUT/STATUS.txt
+          git commit -m "Complete secure V6 stem separation"
+          git push origin HEAD:jymmy-v6-secure-worker-20260809
