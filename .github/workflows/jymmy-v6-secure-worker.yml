@@ -1,4 +1,4 @@
-name: JYMMY V6 Secure Demucs Worker
+name: JYMMY V6 Secure Demucs Worker R2
 
 on:
   push:
@@ -22,15 +22,15 @@ jobs:
           ref: jymmy-v6-secure-worker-20260809
           fetch-depth: 1
 
-      - name: Configure secure handshake
+      - name: Configure fresh secure handshake R2
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "JYMMY Secure Audio Worker"
           git config user.email "actions@github.com"
           mkdir -p .secure HANDSHAKE SECURE_OUTPUT inputs separated
-          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out .secure/runner_private.pem >/dev/null 2>&1
-          openssl pkey -in .secure/runner_private.pem -pubout -out HANDSHAKE/runner_public.pem >/dev/null 2>&1
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out .secure/runner_private_r2.pem >/dev/null 2>&1
+          openssl pkey -in .secure/runner_private_r2.pem -pubout -out HANDSHAKE/runner_public_r2.pem >/dev/null 2>&1
           cat > .secure/output_public.pem <<'EOF'
           -----BEGIN PUBLIC KEY-----
           MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAija3C01qa7I79dcRCZfW
@@ -48,19 +48,20 @@ jobs:
           -----END PUBLIC KEY-----
           EOF
           sed -i 's/^          //' .secure/output_public.pem
-          git add HANDSHAKE/runner_public.pem
-          git commit -m "Secure worker handshake public key"
+          git pull --rebase origin jymmy-v6-secure-worker-20260809
+          git add HANDSHAKE/runner_public_r2.pem
+          git commit -m "Secure worker R2 handshake public key"
           git push origin HEAD:jymmy-v6-secure-worker-20260809
 
-      - name: Wait for encrypted Drive manifest
+      - name: Wait for encrypted R2 Drive manifest
         shell: bash
         run: |
           set -euo pipefail
           FOUND=0
-          for i in $(seq 1 180); do
+          for i in $(seq 1 240); do
             git fetch -q origin jymmy-v6-secure-worker-20260809
-            if git cat-file -e origin/jymmy-v6-secure-worker-20260809:SECURE_INPUT/manifest.rsa 2>/dev/null; then
-              git show origin/jymmy-v6-secure-worker-20260809:SECURE_INPUT/manifest.rsa > .secure/manifest.rsa
+            if git cat-file -e origin/jymmy-v6-secure-worker-20260809:SECURE_INPUT/manifest_r2.rsa 2>/dev/null; then
+              git show origin/jymmy-v6-secure-worker-20260809:SECURE_INPUT/manifest_r2.rsa > .secure/manifest_r2.rsa
               FOUND=1
               break
             fi
@@ -68,12 +69,14 @@ jobs:
           done
           test "$FOUND" -eq 1
           openssl pkeyutl -decrypt \
-            -inkey .secure/runner_private.pem \
+            -inkey .secure/runner_private_r2.pem \
             -pkeyopt rsa_padding_mode:oaep \
             -pkeyopt rsa_oaep_md:sha256 \
-            -in .secure/manifest.rsa \
-            -out .secure/manifest.txt
-          test "$(wc -l < .secure/manifest.txt)" -eq 6
+            -in .secure/manifest_r2.rsa \
+            -out .secure/manifest_r2.txt
+          LINES="$(grep -cve '^$' .secure/manifest_r2.txt)"
+          test "$LINES" -ge 1
+          test "$LINES" -le 5
 
       - name: Install neural separation stack
         run: |
@@ -82,17 +85,26 @@ jobs:
           python -m pip install --upgrade pip
           pip install 'demucs==4.0.1' gdown torchcodec
 
-      - name: Separate, encrypt and persist six clean stems
+      - name: Separate encrypt and persist remaining stems
         env:
           TORCH_HOME: ${{ github.workspace }}/.torch
         shell: bash
         run: |
           set -euo pipefail
-          TRACK=0
-          while IFS='|' read -r IDX FID; do
-            TRACK=$((TRACK+1))
+          mapfile -t TRACKS < <(grep -ve '^$' .secure/manifest_r2.txt)
+          PROCESSED=0
+
+          for ROW in "${TRACKS[@]}"; do
+            IDX="${ROW%%|*}"
+            FID="${ROW#*|}"
             test -n "$IDX"
             test -n "$FID"
+
+            if [ -f "SECURE_OUTPUT/stem_${IDX}.flac.enc" ] && [ -f "SECURE_OUTPUT/stem_${IDX}.key.rsa" ] && [ -f "SECURE_OUTPUT/stem_${IDX}.iv" ]; then
+              echo "Encrypted stem ${IDX} already persisted; skipping."
+              continue
+            fi
+
             INPUT="inputs/source_${IDX}.m4a"
             STEMBASE="source_${IDX}"
             PLAIN=".secure/stem_${IDX}.flac"
@@ -101,7 +113,7 @@ jobs:
             KEYENC="SECURE_OUTPUT/stem_${IDX}.key.rsa"
             IVFILE="SECURE_OUTPUT/stem_${IDX}.iv"
 
-            python - "$FID" "$INPUT" <<'PY'
+            python - "$FID" "$INPUT" </dev/null <<'PY'
           import gdown, os, sys
           fid, out = sys.argv[1], sys.argv[2]
           result = gdown.download(id=fid, output=out, quiet=False)
@@ -115,7 +127,7 @@ jobs:
               --flac \
               --clip-mode rescale \
               -o separated \
-              "$INPUT"
+              "$INPUT" </dev/null
 
             FOUND="$(find separated/htdemucs_ft -type f -path "*/${STEMBASE}/vocals.flac" -print -quit)"
             test -n "$FOUND"
@@ -146,7 +158,11 @@ jobs:
             AUDKEYHEX="$(xxd -p -c 256 "$AUDKEY")"
             openssl enc -aes-256-cbc -K "$AUDKEYHEX" -iv "$AUDIVHEX" -in .secure/audit_${IDX}.txt -out "$AUDENC"
             printf '%s\n' "$AUDIVHEX" > "$AUDIV"
-            openssl pkeyutl -encrypt -pubin -inkey .secure/output_public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in "$AUDKEY" -out "$AUDKEYENC"
+            openssl pkeyutl -encrypt \
+              -pubin -inkey .secure/output_public.pem \
+              -pkeyopt rsa_padding_mode:oaep \
+              -pkeyopt rsa_oaep_md:sha256 \
+              -in "$AUDKEY" -out "$AUDKEYENC"
 
             git fetch -q origin jymmy-v6-secure-worker-20260809
             git rebase origin/jymmy-v6-secure-worker-20260809
@@ -154,16 +170,45 @@ jobs:
             git commit -m "Persist encrypted V6 stem ${IDX}"
             git push origin HEAD:jymmy-v6-secure-worker-20260809
 
+            PROCESSED=$((PROCESSED+1))
             rm -f "$INPUT" "$PLAIN" "$KEYBIN" "$AUDKEY" .secure/audit_${IDX}.txt
             rm -rf "separated/htdemucs_ft/${STEMBASE}"
-          done < .secure/manifest.txt
-          test "$TRACK" -eq 6
+          done
 
-      - name: Mark encrypted separation complete
+          echo "Newly processed stems: $PROCESSED"
+
+      - name: Verify six encrypted stems
+        shell: bash
         run: |
-          printf 'COMPLETE\n' > SECURE_OUTPUT/STATUS.txt
-          git fetch -q origin jymmy-v6-secure-worker-20260809
-          git rebase origin/jymmy-v6-secure-worker-20260809
+          set -euo pipefail
+          git pull --rebase origin jymmy-v6-secure-worker-20260809
+          for IDX in 01 02 03 04 05 06; do
+            test -s "SECURE_OUTPUT/stem_${IDX}.flac.enc"
+            test -s "SECURE_OUTPUT/stem_${IDX}.key.rsa"
+            test -s "SECURE_OUTPUT/stem_${IDX}.iv"
+            test -s "SECURE_OUTPUT/audit_${IDX}.txt.enc"
+            test -s "SECURE_OUTPUT/audit_${IDX}.key.rsa"
+            test -s "SECURE_OUTPUT/audit_${IDX}.iv"
+          done
+          printf 'COMPLETE_R2\n' > SECURE_OUTPUT/STATUS.txt
           git add SECURE_OUTPUT/STATUS.txt
-          git commit -m "Complete secure V6 stem separation"
+          git commit -m "Complete secure V6 stem separation R2"
           git push origin HEAD:jymmy-v6-secure-worker-20260809
+
+      - name: Package encrypted outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -czf JYMMY_V6_ENCRYPTED_OUTPUTS.tar.gz SECURE_OUTPUT/
+          sha256sum JYMMY_V6_ENCRYPTED_OUTPUTS.tar.gz > JYMMY_V6_ENCRYPTED_OUTPUTS.tar.gz.sha256
+
+      - name: Upload encrypted transfer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: JYMMY_V6_ENCRYPTED_OUTPUTS
+          path: |
+            JYMMY_V6_ENCRYPTED_OUTPUTS.tar.gz
+            JYMMY_V6_ENCRYPTED_OUTPUTS.tar.gz.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
