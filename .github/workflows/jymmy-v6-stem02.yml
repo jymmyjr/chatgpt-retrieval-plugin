@@ -1,0 +1,142 @@
+name: JYMMY V6 Secure Stem 02 Recovery
+
+on:
+  push:
+    branches:
+      - jymmy-v6-secure-worker-20260809
+    paths:
+      - '.github/workflows/jymmy-v6-stem02.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  stem02:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: jymmy-v6-secure-worker-20260809
+          fetch-depth: 1
+
+      - name: Generate secure handshake 02
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "JYMMY Stem02 Audio Worker"
+          git config user.email "actions@github.com"
+          mkdir -p .secure HANDSHAKE SECURE_OUTPUT inputs separated
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out .secure/stem02_private.pem >/dev/null 2>&1
+          openssl pkey -in .secure/stem02_private.pem -pubout -out HANDSHAKE/stem02_recovery.pem >/dev/null 2>&1
+          cat > .secure/output_public.pem <<'EOF'
+          -----BEGIN PUBLIC KEY-----
+          MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAija3C01qa7I79dcRCZfW
+          y7urZ5T1g2W3VoB5PlrlLnKE7LOUunvtUHZbRvWZ1bjmulvZvJo2BA7hiHq7I5Hj
+          Fn4DgcFRayeh7LSpLCVKVKKkoJpck94lel23lrXs7buNM9mOhXyMDH+fY/rSefEL
+          +2y1/0a7Cz1qCISNTg4apImHVjvCLX92KVmQ6o5g3udFZnv/B9OAgLPJYqO90WXo
+          W9IPMM2QMZfrTR4IiwB21kItKxNH2xL/LDzj6srFmi/uc0VyVYXkyNcNWGX6uunE
+          sQLtZk33LM67mI/NC/k4T4klcYjeP3BDYcaEtOsUw57LZchzwar8ANoqvA9acmTN
+          lIO4AP5qCxdcjzfrRcEbN52Qa02mhNEuDp+6/ZXFjGJvzKo7FXdB3HxlO5f6u6L2
+          t6KqB397eB17cC9gj4Co/4RoAEreqie0+7NCvsunb82623b1aAU/AJzXG/fI8Za8
+          4ilo1LZQY43Hh3ebY8pCjnfZ/RjCI2nXJI3lx5h56LgwIODImke63QFQO4++roQz
+          s32CfcFnaSRSC/DBTMoKbbD99W7Tsyj05QJcLuTDc98GFlsLnOYlAplkWzd4/wTl
+          JIKYEZMq5rvMDXnlRrNwtzhbTym3R/Bub97dVNb9YHeiY+JMhRYZrwZAknYjQHOC
+          7nJcpKZhzNKaLYALjbN07N0CAwEAAQ==
+          -----END PUBLIC KEY-----
+          EOF
+          git add HANDSHAKE/stem02_recovery.pem
+          git commit -m "Secure stem02 recovery handshake"
+          for TRY in 1 2 3 4 5 6 7 8; do
+            git fetch -q origin jymmy-v6-secure-worker-20260809
+            if git rebase origin/jymmy-v6-secure-worker-20260809 && git push origin HEAD:jymmy-v6-secure-worker-20260809; then
+              exit 0
+            fi
+            git rebase --abort 2>/dev/null || true
+            sleep $((TRY*2))
+          done
+          exit 1
+
+      - name: Wait for encrypted source id
+        shell: bash
+        run: |
+          set -euo pipefail
+          FOUND=0
+          for i in $(seq 1 240); do
+            git fetch -q origin jymmy-v6-secure-worker-20260809
+            if git cat-file -e origin/jymmy-v6-secure-worker-20260809:SECURE_INPUT/stem02_recovery.rsa 2>/dev/null; then
+              git show origin/jymmy-v6-secure-worker-20260809:SECURE_INPUT/stem02_recovery.rsa > .secure/source02.rsa
+              FOUND=1
+              break
+            fi
+            sleep 5
+          done
+          test "$FOUND" -eq 1
+          openssl pkeyutl -decrypt -inkey .secure/stem02_private.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in .secure/source02.rsa -out .secure/source02_id.txt
+          test -s .secure/source02_id.txt
+
+      - name: Install neural stack
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade pip
+          pip install 'demucs==4.0.1' gdown torchcodec
+
+      - name: Recover stem 02
+        env:
+          TORCH_HOME: ${{ github.workspace }}/.torch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch -q origin jymmy-v6-secure-worker-20260809
+          if git cat-file -e origin/jymmy-v6-secure-worker-20260809:SECURE_OUTPUT/stem_02.flac.enc 2>/dev/null; then
+            echo "Stem 02 already persisted; skipping duplicate inference."
+            exit 0
+          fi
+          FID="$(tr -d '\r\n' < .secure/source02_id.txt)"
+          INPUT="inputs/source_02.m4a"
+          python - "$FID" "$INPUT" </dev/null <<'PY'
+          import gdown, os, sys
+          fid, out = sys.argv[1], sys.argv[2]
+          r = gdown.download(id=fid, output=out, quiet=False)
+          if not r or not os.path.exists(out) or os.path.getsize(out) == 0:
+              raise SystemExit('Drive download failed')
+          PY
+          python -m demucs --two-stems=vocals -n htdemucs_ft --flac --clip-mode rescale -o separated "$INPUT" </dev/null
+          FOUND="$(find separated/htdemucs_ft -type f -path '*/source_02/vocals.flac' -print -quit)"
+          test -n "$FOUND"
+          PLAIN=.secure/stem_02.flac
+          cp "$FOUND" "$PLAIN"
+
+          KEY=.secure/stem02_key.bin
+          openssl rand 32 > "$KEY"
+          IVHEX="$(openssl rand -hex 16)"
+          KEYHEX="$(xxd -p -c 256 "$KEY")"
+          openssl enc -aes-256-cbc -K "$KEYHEX" -iv "$IVHEX" -in "$PLAIN" -out SECURE_OUTPUT/stem_02.flac.enc
+          printf '%s\n' "$IVHEX" > SECURE_OUTPUT/stem_02.iv
+          openssl pkeyutl -encrypt -pubin -inkey .secure/output_public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in "$KEY" -out SECURE_OUTPUT/stem_02.key.rsa
+
+          printf 'index=02\n' > .secure/audit_02.txt
+          ffprobe -v error -show_entries format=duration,size,bit_rate -show_entries stream=codec_name,sample_rate,channels,bits_per_raw_sample -of default=nw=1 "$PLAIN" >> .secure/audit_02.txt
+          sha256sum "$PLAIN" >> .secure/audit_02.txt
+          sha256sum SECURE_OUTPUT/stem_02.flac.enc >> .secure/audit_02.txt
+          AKEY=.secure/audit02_key.bin
+          openssl rand 32 > "$AKEY"
+          AIV="$(openssl rand -hex 16)"
+          AKEYHEX="$(xxd -p -c 256 "$AKEY")"
+          openssl enc -aes-256-cbc -K "$AKEYHEX" -iv "$AIV" -in .secure/audit_02.txt -out SECURE_OUTPUT/audit_02.txt.enc
+          printf '%s\n' "$AIV" > SECURE_OUTPUT/audit_02.iv
+          openssl pkeyutl -encrypt -pubin -inkey .secure/output_public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in "$AKEY" -out SECURE_OUTPUT/audit_02.key.rsa
+
+          git add SECURE_OUTPUT/stem_02.flac.enc SECURE_OUTPUT/stem_02.key.rsa SECURE_OUTPUT/stem_02.iv SECURE_OUTPUT/audit_02.txt.enc SECURE_OUTPUT/audit_02.key.rsa SECURE_OUTPUT/audit_02.iv
+          git commit -m "Persist recovered encrypted V6 stem 02"
+          for TRY in 1 2 3 4 5 6 7 8 9 10; do
+            git fetch -q origin jymmy-v6-secure-worker-20260809
+            if git rebase origin/jymmy-v6-secure-worker-20260809 && git push origin HEAD:jymmy-v6-secure-worker-20260809; then
+              exit 0
+            fi
+            git rebase --abort 2>/dev/null || true
+            sleep $((TRY*2))
+          done
+          exit 1
